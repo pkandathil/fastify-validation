@@ -34,6 +34,10 @@ function build(opts = {}) {
     return { queryStringParameters: request.query, params: request.params }
   })
 
+  app.get('/status', (req, res) => {
+    res.status(200).send('Up and running')
+  })
+
   return app
 }
 
