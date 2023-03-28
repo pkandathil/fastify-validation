@@ -173,18 +173,71 @@ class CdkStack extends Stack {
     const sourceAction = new codepipeline_actions.GitHubSourceAction({
       actionName: 'Github_Source',
       output: sourceOutput,
-      owner: 'Four-Nine-Digital',
-      repo: 'starter-kit-api',
-      branch: 'main',
+      owner: 'pkandathil',
+      repo: 'fastify-validation',
+      branch: 'feat/cdk',
       oauthToken: SecretValue.secretsManager('prashant/github/token', {
         jsonField: 'prashant-github-token'
       }),
       trigger: codepipeline_actions.GitHubTrigger.WEBHOOK
     })
 
-    const testDBPassword = SecretValue.secretsManager('dev/test-database/pw', {
-      jsonField: 'password'
-    })
+    // BUILD STAGE
+    const buildProject = new codebuild.PipelineProject(
+      this,
+      `${this.stackName}-BuildImage`,
+      {
+        vpc,
+        projectName: `${this.stackName}-BuildImage`,
+        description: `${this.stackName}: Build app`,
+        environmentVariables: {
+          REPOSITORY_URI: { value: `${ecrRepository.repositoryUri}` },
+          REGION: { value: 'us-west-2' }
+        },
+        environment: {
+          buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_3,
+          privileged: true
+        },
+        buildSpec: codebuild.BuildSpec.fromObject({
+          version: '0.2',
+          phases: {
+            pre_build: {
+              commands: [
+                'echo "Logging in to Amazon ECR registry and piping the output to Docker log in..."',
+                'aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REPOSITORY_URI',
+                'COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)',
+                'IMAGE_TAG=${COMMIT_HASH:=latest}'
+              ]
+            },
+            build: {
+              commands: [
+                'echo Build started on `date`',
+                'echo "Building Docker image..."',
+                'echo $REPOSITORY_URI',
+                'docker build -f Dockerfile -t $REPOSITORY_URI:latest .',
+                'docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG'
+              ]
+            },
+            post_build: {
+              commands: [
+                'echo Build completed on `date`',
+                'echo "Pushing Docker image..."',
+                'echo $REPOSITORY_URI:latest',
+                'echo $REPOSITORY_URI:$IMAGE_TAG',
+                'docker push $REPOSITORY_URI:latest',
+                'docker push $REPOSITORY_URI:$IMAGE_TAG',
+                'echo "Creating imageDetail.json"',
+                `printf '[{\"name\":\"${container.containerName}\",\"imageUri\":\"%s\"}]' $REPOSITORY_URI:latest > imageDetail.json`,
+                'pwd; ls -al; cat imageDetail.json'
+              ]
+            }
+          },
+          artifacts: {
+            files: ['imageDetail.json']
+          }
+        })
+      }
+    )
 
 
 

@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "tap --reporter=list --watch",
+    "start:ci": "node src/server.js",
     "start": "npx nodemon src/server.js"
   },
   "author": "",
