@@ -30,9 +30,9 @@ function build(opts = {}) {
   }
 
   //Attach the schema to the route
-  app.get('/:keyword', { schema }, async (request, reply) => {
-    return { queryStringParameters: request.query, params: request.params }
-  })
+  // app.get('/:keyword', { schema }, async (request, reply) => {
+  //   return { queryStringParameters: request.query, params: request.params }
+  // })
 
   app.get('/status', (req, res) => {
     res.status(200).send('Up and running')
