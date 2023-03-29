@@ -55,15 +55,6 @@ class PrashantAuctionTest extends Stack {
       loadBalancerName: 'prashant-auction-test-lb-name',
     });
 
-    // const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, "MyFargateService", {
-    //   cluster: cluster, // Required
-    //   cpu: 512, // Default is 256
-    //   desiredCount: 6, // Default is 1
-    //   taskImageOptions: { image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample") },
-    //   memoryLimitMiB: 1024, // Default is 512
-    //   publicLoadBalancer: true // Default is true
-    // });
-
 
     /** PIPELINE SETUP */
     // SOURCE STAGE
