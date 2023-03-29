@@ -9,9 +9,7 @@ const server = require('./app')({
   }
 })
 
-let port = process.env.NODE_ENV === 'prod' ? 80 : 3000
-
-server.listen({ port }, (err, address) => {
+server.listen({ port: 3000 }, (err, address) => {
   if (err) {
     server.log.error(err)
     process.exit(1)
