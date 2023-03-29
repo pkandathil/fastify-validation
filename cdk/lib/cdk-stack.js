@@ -1,4 +1,4 @@
-const { Stack, Duration, RemovalPolicy, CfnOutput } = require('aws-cdk-lib');
+const { Stack, Duration, RemovalPolicy, CfnOutput, SecretValue } = require('aws-cdk-lib');
 const ec2 = require('aws-cdk-lib/aws-ec2');
 const iam = require('aws-cdk-lib/aws-iam');
 const ecs = require('aws-cdk-lib/aws-ecs');
@@ -8,10 +8,11 @@ const elbv2 = require('aws-cdk-lib/aws-elasticloadbalancingv2');
 const codepipeline = require('aws-cdk-lib/aws-codepipeline');
 const codepipeline_actions = require('aws-cdk-lib/aws-codepipeline-actions');
 const codebuild = require('aws-cdk-lib/aws-codebuild');
+const ecsPatterns = require('aws-cdk-lib/aws-ecs-patterns');
 
 
 
-class CdkStack extends Stack {
+class PrashantAuctionTest extends Stack {
   /**
    *
    * @param {Construct} scope
@@ -28,144 +29,41 @@ class CdkStack extends Stack {
       vpc
     })
 
-    // TASK EXECUTION IAM ROLE
-    const ecsTaskExecutionRole = new iam.Role(this, `${this.stackName}-Role`, {
-      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-      description:
-        'ECS task to pull container imgaes and publish container logs to Amazon CloudWatch'
-    })
-    ecsTaskExecutionRole.addManagedPolicy(
-      iam.ManagedPolicy.fromAwsManagedPolicyName(
-        'service-role/AmazonECSTaskExecutionRolePolicy'
-      )
-    )
-
-    // FARGATE TASK DEFINITION
-    const fargateTaskDefinition = new ecs.FargateTaskDefinition(
-      this,
-      `${this.stackName}-Cluster-TaskDefintion`,
-      {
-        memoryLimitMiB: 1024,
-        cpu: 512,
-        taskRole: ecsTaskExecutionRole
-      }
-    )
-
-    // ECR REPOSITORY
     const ecrRepository = new ecr.Repository(
       this,
       `${this.stackName}-ApiRepository`,
       {
-        repositoryName: 'prashant-auction-test-to-delete',
+        repositoryName: 'prashant-auction-test-to-delete-3',
         removalPolicy: RemovalPolicy.DESTROY
       }
     )
 
-    // CLOUDWATCH LOG GROUP
-    const logGroup = new logs.LogGroup(this, `${this.stackName}-TaskLogGroup`, {
-      logGroupName: '/prashant-auction-test/tasks',
-      removalPolicy: RemovalPolicy.DESTROY
-    })
-    const serviceLogDriver = new ecs.AwsLogDriver({
-      logGroup,
-      streamPrefix: 'prashant-auction-test'
-    })
+    const containerName = 'fastify-backend'
 
-    const container = fargateTaskDefinition.addContainer(
-      `${this.stackName}-Container`,
-      {
-        //image: ecs.ContainerImage.fromEcrRepository(ecrRepository),
-        image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
-        environment: {
-        },
-        logging: serviceLogDriver,
-        healthCheck: {
-          command: [
-            'CMD-SHELL',
-            'curl -f http://localhost:3000/status || exit 1'
-          ],
-          interval: Duration.seconds(30),
-          retries: 5,
-          startPeriod: Duration.seconds(30),
-          timeout: Duration.seconds(30)
-        }
-      }
-    )
-    container.addPortMappings({ containerPort: 3000 })
-
-    // FARGATE SERVICE
-    const serviceSecurityGroup = new ec2.SecurityGroup(
-      this,
-      `${this.stackName}-ServiceSecurityGroup`,
-      {
-        allowAllOutbound: true,
-        securityGroupName: `${this.stackName}-ServiceSecurityGroup`,
-        vpc
-      }
-    )
-    serviceSecurityGroup.connections.allowFromAnyIpv4(ec2.Port.tcp(3000))
-
-
-    const service = new ecs.FargateService(this, `${this.stackName}-Service`, {
+    const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'Service', {
       cluster,
-      taskDefinition: fargateTaskDefinition,
+      memoryLimitMiB: 1024,
       desiredCount: 1,
-      securityGroups: [serviceSecurityGroup]
-    })
-    const scaling = service.autoScaleTaskCount({ maxCapacity: 2 })
-    scaling.scaleOnCpuUtilization('CpuScaling', {
-      targetUtilizationPercent: 50,
-      scaleInCooldown: Duration.seconds(60),
-      scaleOutCooldown: Duration.seconds(60)
-    })
+      cpu: 512,
+      taskImageOptions: {
+        image: ecs.ContainerImage.fromEcrRepository(ecrRepository),
+        //image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+        containerName,
+        containerPort: 3000
+      },
+      serviceName: "prashant-auction-node-service",
+      loadBalancerName: 'prashant-auction-test-lb-name',
+    });
 
-    /** LOAD BALANCER SETUP */
-    const loadBalancerSecurityGroup = new ec2.SecurityGroup(
-      this,
-      `${this.stackName}-LoadBalancerSecurityGroup`,
-      {
-        securityGroupName: `${this.stackName}-LoadBalancerSecurityGroup`,
-        vpc,
-        allowAllOutbound: true
-      }
-    )
-    loadBalancerSecurityGroup.connections.allowFromAnyIpv4(ec2.Port.tcp(80))
+    // const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, "MyFargateService", {
+    //   cluster: cluster, // Required
+    //   cpu: 512, // Default is 256
+    //   desiredCount: 6, // Default is 1
+    //   taskImageOptions: { image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample") },
+    //   memoryLimitMiB: 1024, // Default is 512
+    //   publicLoadBalancer: true // Default is true
+    // });
 
-    const httpALB = new elbv2.ApplicationLoadBalancer(
-      this,
-      `${this.stackName}-AppLoadBalancer`,
-      {
-        vpc: vpc,
-        internetFacing: true,
-        securityGroup: loadBalancerSecurityGroup
-      }
-    )
-
-    // Add listener - to redirect traffic from http to https
-    const httpsApiListner = httpALB.addListener(
-      `${this.stackName}-AppLoadBalancer-Listener`,
-      {
-        port: 80,
-        protocol: elbv2.ApplicationProtocol.HTTP,
-        defaultAction: elbv2.ListenerAction.fixedResponse(200)
-      }
-    )
-
-    httpsApiListner.addTargets(
-      `${this.stackName}-AppLoadBalancer-Listener-Target2`,
-      {
-        port: 4000,
-        protocol: elbv2.ApplicationProtocol.HTTP,
-        targets: [service],
-        healthCheck: {
-          path: '/status'
-        }
-      }
-    )
-
-    new CfnOutput(this, 'HTTP API endpoint: ', {
-      value: httpALB.loadBalancerDnsName
-    })
 
     /** PIPELINE SETUP */
     // SOURCE STAGE
@@ -192,7 +90,8 @@ class CdkStack extends Stack {
         description: `${this.stackName}: Build app`,
         environmentVariables: {
           REPOSITORY_URI: { value: `${ecrRepository.repositoryUri}` },
-          REGION: { value: 'us-west-2' }
+          REGION: { value: 'us-east-1' },
+          CONTAINER_NAME: { value: containerName },
         },
         environment: {
           buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_3,
@@ -227,7 +126,7 @@ class CdkStack extends Stack {
                 'docker push $REPOSITORY_URI:latest',
                 'docker push $REPOSITORY_URI:$IMAGE_TAG',
                 'echo "Creating imageDetail.json"',
-                `printf '[{\"name\":\"${container.containerName}\",\"imageUri\":\"%s\"}]' $REPOSITORY_URI:latest > imageDetail.json`,
+                `printf '[{\"name\":\"%s\",\"imageUri\":\"%s\"}]' "$CONTAINER_NAME" "$REPOSITORY_URI:latest" > imageDetail.json`,
                 'pwd; ls -al; cat imageDetail.json'
               ]
             }
@@ -238,10 +137,57 @@ class CdkStack extends Stack {
         })
       }
     )
+    // add policy to push and pull to ECR
+    const policy = new iam.PolicyStatement({
+      actions: [
+        'ecr:GetDownloadUrlForLayer',
+        'ecr:BatchGetImage',
+        'ecr:BatchCheckLayerAvailability',
+        'ecr:InitiateLayerUpload',
+        'ecr:CompleteLayerUpload',
+        'ecr:GetAuthorizationToken',
+        'ecr:PutImage',
+        'ecr:UploadLayerPart'
+      ],
+      resources: ['*']
+    })
+    buildProject.addToRolePolicy(policy)
 
+    const buildOutput = new codepipeline.Artifact('buildOutput')
 
+    const buildAction = new codepipeline_actions.CodeBuildAction({
+      actionName: 'CodeBuild',
+      project: buildProject,
+      input: sourceOutput,
+      outputs: [buildOutput]
+    })
 
+    // DEPLOY STAGE
+    const deployAction = new codepipeline_actions.EcsDeployAction({
+      actionName: 'DeployAction',
+      service: loadBalancedFargateService.service,
+      imageFile: new codepipeline.ArtifactPath(buildOutput, 'imageDetail.json'),
+      deploymentTimeout: Duration.minutes(20)
+    })
+
+    // CREATE PIPELINE
+    new codepipeline.Pipeline(this, `${this.stackName}-Pipeline`, {
+      stages: [
+        {
+          stageName: 'Source',
+          actions: [sourceAction]
+        },
+        {
+          stageName: 'Build',
+          actions: [buildAction]
+        },
+        {
+          stageName: 'Deploy',
+          actions: [deployAction]
+        }
+      ]
+    })
   }
 }
 
-module.exports = { CdkStack }
+module.exports = { PrashantAuctionTest }
