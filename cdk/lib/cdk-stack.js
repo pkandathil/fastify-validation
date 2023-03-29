@@ -113,6 +113,9 @@ class PrashantAuctionTest extends Stack {
                 'echo Build started on `date`',
                 'echo "Building Docker image..."',
                 'echo $REPOSITORY_URI',
+                'cd services',
+                'echo `pwd`',
+                'echo `ls -la`',
                 'docker build -f Dockerfile -t $REPOSITORY_URI:latest .',
                 'docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG'
               ]
@@ -126,8 +129,8 @@ class PrashantAuctionTest extends Stack {
                 'docker push $REPOSITORY_URI:latest',
                 'docker push $REPOSITORY_URI:$IMAGE_TAG',
                 'echo "Creating imageDetail.json"',
-                `printf '[{\"name\":\"%s\",\"imageUri\":\"%s\"}]' "$CONTAINER_NAME" "$REPOSITORY_URI:latest" > imageDetail.json`,
-                'pwd; ls -al; cat imageDetail.json'
+                `printf '[{\"name\":\"%s\",\"imageUri\":\"%s\"}]' "$CONTAINER_NAME" "$REPOSITORY_URI:latest" > ../imageDetail.json`,
+                'pwd; ls -al; cat ../imageDetail.json'
               ]
             }
           },
